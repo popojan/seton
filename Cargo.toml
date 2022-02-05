@@ -1,0 +1,16 @@
+[package]
+name = "seton"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = {git = "https://github.com/bevyengine/bevy", branch = "main"}
+bevy_prototype_lyon= {git = "https://github.com/Nilirad/bevy_prototype_lyon.git", branch = "master"}
+lyon_tessellation = "0.17"
+rand = "0.8.4"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
