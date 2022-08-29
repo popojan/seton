@@ -4,10 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = {git = "https://github.com/bevyengine/bevy", branch = "main"}
-bevy_prototype_lyon= {git = "https://github.com/Nilirad/bevy_prototype_lyon.git", branch = "master"}
-lyon_tessellation = "0.17"
-rand = "0.8.4"
+bevy = {version= "0.8", default-features=false, features=[
+    "subpixel_glyph_atlas", "bevy_render", "bevy_ui",
+    "bevy_core_pipeline", "bevy_asset",
+    "wayland", "bevy_text", "bevy_sprite", "wav"
+]}
+bevy_egui = "0.16.0"
+bevy_prototype_lyon = "0.6.0"
+lyon_tessellation = "0.17.10"
+rand = "0.8.5"
+ndarray = "0.15.6"
 
 [profile.dev]
 opt-level = 0
