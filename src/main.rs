@@ -121,9 +121,7 @@ fn egui_settings(mut egui_context: ResMut<EguiContext>,
     egui::TopBottomPanel::top("top_bar")
     .show(egui_context.ctx_mut(), |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Setonova hra");
-            ui.separator();
-            if ui.button("^").clicked() {
+            if ui.button(": :").clicked() {
                 if let Some(window) = windows.get_primary_mut() {
                     if window.mode() != WindowMode::BorderlessFullscreen {
                         window.set_mode(WindowMode::BorderlessFullscreen);
@@ -132,6 +130,8 @@ fn egui_settings(mut egui_context: ResMut<EguiContext>,
                     }
                 }
             }
+            ui.separator();
+            ui.label("Setonova hra");
             ui.separator();
             if state.current() == &AppState::Setting {
                 if ui.button("Start").clicked() {
@@ -200,13 +200,13 @@ fn egui_settings(mut egui_context: ResMut<EguiContext>,
             if state.current() == &AppState::Memorizing {
                 ui.add(egui::ProgressBar::new(progress_left as f32));
             } else if game.games_played > 0  && state.current() != &AppState::Solving {
-                ui.label(format!("Skóre: {} %", f32::round(100.0 * game.last_score.3)));
+                ui.label(format!("Hodnocení: {} %", f32::round(100.0 * game.last_score.3)));
                 ui.separator();
                 ui.label(format!("Správně: {}", game.last_score.0));
                 ui.separator();
-                ui.label(format!("Správně pozice: {}", game.last_score.1));
+                ui.label(format!("Špatně barva: {}", game.last_score.1));
                 ui.separator();
-                ui.label(format!("Špatně: {}", game.last_score.2));
+                ui.label(format!("Špatně pozice: {}", game.last_score.2));
             }
         });
     });
