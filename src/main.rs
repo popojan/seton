@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext, EguiPlugin, EguiSettings};
@@ -88,6 +88,7 @@ fn main() {
             title: "Setonova hra".to_string(),
             resizable: true,
             mode: WindowMode::BorderlessFullscreen,
+            fit_canvas_to_parent: true,
             ..default()
         })
         .add_plugins(DefaultPlugins)
@@ -126,7 +127,9 @@ fn egui_settings(
     time: Res<Time>,
     mut windows: ResMut<Windows>,
 ) {
-    egui_settings.scale_factor = 1.75;
+    if let Some(window) = windows.get_primary() {
+        egui_settings.scale_factor = 1.75 / window.scale_factor();
+    }
     let mut progress_left = 1.0;
     egui::TopBottomPanel::top("top_bar")
     .show(egui_context.ctx_mut(), |ui| {
@@ -275,17 +278,27 @@ fn mouse_move(
             let j = f32::floor(j) as usize;
             let stone = game.position[1][[i, j]];
             let sign = if button.just_pressed(MouseButton::Left) { 1 } else {-1};
-            let new_stone = if stone == 0 {
+            let mut new_stone = if stone == 0 {
                 1 * sign
             } else if stone == 1 * sign {
                 -1 * sign
             } else {
                 0
             };
-            let stones_placed = game.position[1].map(|x| if x == &new_stone {1} else {0}).sum();
+            let black_stones_placed = game.position[1].map(|x| if x == &1 {1} else {0}).sum();
+            let white_stones_placed = game.position[1].map(|x| if x == &-1 {1} else {0}).sum();
+            if new_stone == 1 && black_stones_placed >= game.n_black_stones {
+                new_stone = -1;
+            }
+            if new_stone == -1 && white_stones_placed >= game.n_white_stones {
+                new_stone = 1;
+            }
+            if new_stone == 1 && black_stones_placed >= game.n_black_stones {
+                new_stone = 0;
+            }
             if !(
-                   (new_stone == 1 && stones_placed >= game.n_black_stones)
-                || (new_stone == -1 && stones_placed >= game.n_white_stones)
+                   (new_stone == 1 && black_stones_placed >= game.n_black_stones)
+                || (new_stone == -1 && white_stones_placed >= game.n_white_stones)
             ) {
                 game.position[1][[i, j]] = new_stone;
                 events.send(WindowResized {
@@ -362,11 +375,12 @@ fn spawn_source(
     state: ResMut<State<AppState>>,
 ) {
     const PADDING: f32 = 0.05;
-    let vertical = view.window.y > view.window.x;
+    let height_minus_gui = 0.9;
+    let vertical = height_minus_gui * view.window.y > view.window.x;
     let board_side = (1.0 - PADDING) * if vertical {
-        f32::min(view.window.x, 0.5 * view.window.y)
+        f32::min(view.window.x, height_minus_gui * 0.5 * view.window.y)
     } else {
-        f32::min(view.window.y, 0.5 * view.window.x)
+        f32::min(height_minus_gui * view.window.y, 0.5 * view.window.x)
     };
     let shift = 0.5 * board_side * (1.0 + PADDING);
     let (origin_source, origin_target) = if vertical {
