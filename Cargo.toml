@@ -1,14 +1,15 @@
 [package]
 name = "seton"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-bevy = "0.8"
-bevy_egui = "0.16.0"
-bevy_prototype_lyon = "0.6.0"
-rand = "0.8.5"
-ndarray = "0.15.6"
+bevy = {version="0.10", features=["wayland"]}
+egui = "0.21.0"
+bevy_egui = "0.20.2"
+bevy_prototype_lyon = {version = "0.8.0"}
+rand = {version="0.8.5", default-features = false, features=["alloc","std_rng","std"]}
+ndarray = {version = "0.15.6", default-features = false}
 
 [workspace]
 resolver = "2"
@@ -17,4 +18,4 @@ resolver = "2"
 opt-level = 0
 
 [profile.release]
-opt-level = 3
+opt-level = 's'

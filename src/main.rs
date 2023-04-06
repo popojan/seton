@@ -1,21 +1,23 @@
 //#![windows_subsystem = "windows"]
 
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContext, EguiPlugin, EguiSettings};
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiSettings};
 use bevy_prototype_lyon::prelude::*;
-use bevy::window::{WindowId, WindowMode, WindowResized};
-use bevy::window::exit_on_all_closed;
+use bevy_prototype_lyon::draw::Fill;
+use bevy::window::{WindowMode, Window, PrimaryWindow, WindowResized, PresentMode};
 use bevy::window::close_on_esc;
 use bevy_prototype_lyon::shapes;
 use rand::seq::SliceRandom;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 enum AppState {
     Memorizing,
     Solving,
+    #[default]
     Results,
 }
 
+#[derive(Resource)]
 struct SetonGame {
   board_size: usize,
   time_seconds: usize,
@@ -31,10 +33,9 @@ struct SetonGame {
 #[derive(Component)]
 struct Piece;
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 struct Board {
     vertical: bool,
-    window_id: WindowId,
     window: Vec2,
     board_side: f32,
     square_side: f32,
@@ -84,50 +85,45 @@ impl Default for SetonGame {
 
 fn main() {
     App::new()
-        .insert_resource(WindowDescriptor {
-            title: "Setonova hra".to_string(),
-            resizable: true,
-            mode: WindowMode::BorderlessFullscreen,
-            fit_canvas_to_parent: true,
+        .insert_resource(Msaa::Sample4)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Setonova hra".to_string(),
+                present_mode: PresentMode::AutoVsync,
+                resizable: true,
+                mode: WindowMode::BorderlessFullscreen,
+                fit_canvas_to_parent: true,
+                ..default()
+            }),
             ..default()
-        })
-        .add_plugins(DefaultPlugins)
+        }))
         .add_plugin(ShapePlugin)
         .add_plugin(EguiPlugin)
-        .add_state(AppState::Results)
+        .add_state::<AppState>()
         .insert_resource(ClearColor(Color::DARK_GRAY))
-        .insert_resource(Msaa { samples: 4 })
         .insert_resource(SetonGame::default())
         .insert_resource(Board::default())
         .add_startup_system(setup)
         .add_system(close_on_esc)
-        .add_system(exit_on_all_closed)
         .add_system(resized_redraw_system)
-        .add_system_set(SystemSet::on_enter(AppState::Memorizing)
-            .with_system(redraw_system)
-        )
-        .add_system_set(SystemSet::on_enter(AppState::Solving)
-            .with_system(redraw_system)
-        )
-        .add_system_set(SystemSet::on_update(AppState::Solving)
-            .with_system(mouse_move)
-        )
-        .add_system_set(SystemSet::on_enter(AppState::Results)
-            .with_system(redraw_system)
-        )
+        .add_system(redraw_system.in_schedule(OnEnter(AppState::Memorizing)))
+        .add_system(redraw_system.in_schedule(OnEnter(AppState::Solving)))
+        .add_system(mouse_move.in_set(OnUpdate(AppState::Solving)))
+        .add_system(redraw_system.in_schedule(OnEnter(AppState::Results)))
         .add_system(egui_settings)
         .run();
 }
 
 fn egui_settings(
-    mut egui_context: ResMut<EguiContext>,
+    mut egui_context: EguiContexts,
     mut egui_settings: ResMut<EguiSettings>,
-    mut state: ResMut<State<AppState>>,
+    state: Res<State<AppState>>,
+    mut next_state: ResMut<NextState<AppState>>,
     mut game: ResMut<SetonGame>,
     time: Res<Time>,
-    mut windows: ResMut<Windows>,
+    mut window_query: Query<&mut Window, With<PrimaryWindow>>
 ) {
-    if let Some(window) = windows.get_primary() {
+    if let Ok(window) = window_query.get_single() {
         egui_settings.scale_factor = 1.75 / window.scale_factor();
     }
     let mut progress_left = 1.0;
@@ -135,38 +131,38 @@ fn egui_settings(
     .show(egui_context.ctx_mut(), |ui| {
         ui.horizontal_wrapped(|ui| {
             if ui.button(": :").clicked() {
-                if let Some(window) = windows.get_primary_mut() {
-                    if window.mode() != WindowMode::BorderlessFullscreen {
-                        window.set_mode(WindowMode::BorderlessFullscreen);
+                if let Ok(mut window) = window_query.get_single_mut() {
+                    if window.mode != WindowMode::BorderlessFullscreen {
+                        window.mode = WindowMode::BorderlessFullscreen;
                     } else {
-                        window.set_mode(WindowMode::Windowed);
+                        window.mode = WindowMode::Windowed;
                     }
                 }
             }
             ui.separator();
             ui.label("Setonova hra");
             ui.separator();
-            if state.current() == &AppState::Results {
+            if state.0 == AppState::Results {
                 if ui.button("Start").clicked() {
                     game.position[0] = sample_stone_coords(game.n_black_stones, game.n_white_stones, game.board_size);
                     game.position[1] = ndarray::Array2::zeros([game.board_size, game.board_size]);
-                    game.time_started = time.seconds_since_startup();
-                    state.set(AppState::Memorizing).unwrap();
+                    game.time_started = time.elapsed_seconds_f64();
+                    next_state.set(AppState::Memorizing);
                 }
-            } else if state.current() == &AppState::Memorizing {
+            } else if state.0 == AppState::Memorizing {
                 ui.label("Zapamatuj si...");
-                progress_left = 1.0 - (time.seconds_since_startup() - game.time_started)/game.time_seconds as f64;
+                progress_left = 1.0 - (time.elapsed_seconds_f64() - game.time_started)/game.time_seconds as f64;
                 ui.separator();
                 if ui.button("Už vím").clicked() {
                     progress_left = 0.0;
                 }
                 if progress_left <= 0.0 {
-                    state.set(AppState::Solving).unwrap();
+                    next_state.set(AppState::Solving);
                 }
-            } else if state.current() == &AppState::Solving {
+            } else if state.0 == AppState::Solving {
                 ui.label("Rozestav kameny...");
                 ui.separator();
-                progress_left = 1.0 - (time.seconds_since_startup() - game.time_started)/game.time_seconds as f64;
+                progress_left = 1.0 - (time.elapsed_seconds_f64() - game.time_started)/game.time_seconds as f64;
                 if ui.button("Hotovo").clicked() {
                     let (correct_2, correct_1) = {
                         let truth = &game.position[0];
@@ -183,10 +179,10 @@ fn egui_settings(
                     game.last_score.3 = correct_2 as f32/(game.n_black_stones as f32 + game.n_white_stones as f32)
                         + 0.5 * correct_1 as f32/(game.n_black_stones as f32 + game.n_white_stones as f32);
                     game.games_played += 1;
-                    state.set(AppState::Results).unwrap();
+                    next_state.set(AppState::Results);
                 }
             }
-            if state.current() == &AppState::Results {
+            if state.0 == AppState::Results {
                 ui.separator();
                 ui.add(egui::Slider::new(&mut game.board_size, 5..=10)
                     .text("deska"));
@@ -205,9 +201,9 @@ fn egui_settings(
     egui::TopBottomPanel::bottom("bottom_bar")
     .show(egui_context.ctx_mut(), |ui| {
         ui.horizontal_centered(|ui| {
-            if state.current() == &AppState::Memorizing {
+            if state.0 == AppState::Memorizing {
                 ui.add(egui::ProgressBar::new(progress_left as f32));
-            } else if game.games_played > 0  && state.current() != &AppState::Solving {
+            } else if game.games_played > 0  && state.0 != AppState::Solving {
                 ui.label(format!("Hodnocení:  {} %", f32::round(100.0 * game.last_score.3)));
                 ui.separator();
                 ui.label(format!("Správně:  {}", game.last_score.0));
@@ -223,20 +219,19 @@ fn egui_settings(
 
 fn resized_redraw_system(
     commands: Commands,
-    windows: Res<Windows>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
     game: ResMut<SetonGame>,
     mut view: ResMut<Board>,
     mut event_resized: EventReader<WindowResized>,
     source: Query<Entity, With<Piece>>,
     state: ResMut<State<AppState>>
 ) {
-    let window = windows.get_primary().unwrap();
+    let window = window_query.get_single().unwrap();
     let width = window.width();
     let height = window.height();
 
     view.window.x = width;
     view.window.y = height;
-    view.window_id = window.id();
 
     let mut count = 0;
     for _event in event_resized.iter() {
@@ -263,9 +258,11 @@ fn mouse_move(
     button: Res<Input<MouseButton>>,
     mut game: ResMut<SetonGame>,
     view: ResMut<Board>,
-    mut events: EventWriter<WindowResized>,
+    source: Query<Entity, With<Piece>>,
+    state: ResMut<State<AppState>>,
+    commands: Commands,
 ) {
-    for e in motion.iter().last() {
+    if let Some(e) = motion.iter().last() {
         game.cursor.x = e.position.x;
         game.cursor.y = e.position.y;
     }
@@ -301,11 +298,10 @@ fn mouse_move(
                 || (new_stone == -1 && white_stones_placed >= game.n_white_stones)
             ) {
                 game.position[1][[i, j]] = new_stone;
-                events.send(WindowResized {
-                    id: view.window_id,
-                    width: view.window.x,
-                    height: view.window.y,
-                })
+                redraw_system(commands, game, view, source, state);
+                //if let Ok(mut window) = window_query.get_single_mut() {
+                //    window.resolution.set(view.window.x, view.window.y);
+                //}
             }
         }
     }
@@ -332,28 +328,36 @@ fn spawn_board(commands: &mut Commands, game: &ResMut<SetonGame>, view: &mut Res
         center: Default::default()
     };
 
-    commands.spawn_bundle(GeometryBuilder::build_as(
-        &board,
-        DrawMode::Fill(FillMode::color(grid_color)),
-        Transform::default().with_translation(Vec3::new(origin.x, origin.y, 0.0)),
-    )).insert(Piece);
+    commands.spawn((
+            ShapeBundle {
+                path: GeometryBuilder::build_as(&board),
+                transform: Transform::default().with_translation(Vec3::new(origin.x, origin.y, 0.0)),
+                ..default()
+            },
+            Fill::color(grid_color)
+        )
+    ).insert(Piece);
 
     for i in 0..game.board_size {
         for j in 0..game.board_size {
-            commands.spawn_bundle(GeometryBuilder::build_as(
-                &square,
-                DrawMode::Fill(FillMode::color(square_color)),
-                Transform::default().with_translation(Vec3::new(
-                    origin.x+ (i as f32-n_half)*square_side, origin.y+(j as f32 - n_half)*square_side, 0.0)),
-            )).insert(Piece);
+            commands.spawn((ShapeBundle{
+                    path: GeometryBuilder::build_as(&square),
+                    transform: Transform::default().with_translation(Vec3::new(
+                        origin.x+ (i as f32-n_half)*square_side, origin.y+(j as f32 - n_half)*square_side, (i *game.board_size+j) as f32)),
+                    ..default()
+                }, Fill::color(square_color))
+            ).insert(Piece);
+
             let is_stone = game.position[solution][[i, j]];
             if is_stone != 0 {
-                commands.spawn_bundle(GeometryBuilder::build_as(
-                    &stone,
-                    DrawMode::Fill(FillMode::color(if is_stone > 0  {Color::BLACK} else {Color::WHITE})),
-                    Transform::default().with_translation(Vec3::new(
-                        origin.x+ (i as f32-n_half)*square_side, origin.y+(j as f32 - n_half)*square_side, 0.0)),
-                )).insert(Piece);
+                commands.spawn((ShapeBundle{
+                        path: GeometryBuilder::build_as(&stone),
+                        transform: Transform::default().with_translation(Vec3::new(
+                            origin.x+ (i as f32-n_half)*square_side, origin.y+(j as f32 - n_half)*square_side, (i*game.board_size+j)as f32+0.5)),
+                        ..default()
+                    },
+                    Fill::color(if is_stone > 0  {Color::BLACK} else {Color::WHITE}))
+                ).insert(Piece);
             }
         }
     }
@@ -365,7 +369,7 @@ fn spawn_board(commands: &mut Commands, game: &ResMut<SetonGame>, view: &mut Res
 
 fn setup(mut commands: Commands) {
     // kamera pro 2D scénu
-    commands.spawn_bundle(Camera2dBundle::default());
+    commands.spawn(Camera2dBundle::default());
 }
 
 fn spawn_source(
@@ -399,11 +403,11 @@ fn spawn_source(
     const SQUARE_COLOR: Color = Color::GRAY;
 
     view.vertical = vertical;
-    let results = state.current() == &AppState::Results && game.games_played > 0;
-    if state.current() == &AppState::Memorizing || results {
+    let results = state.0 == AppState::Results && game.games_played > 0;
+    if state.0 == AppState::Memorizing || results {
         spawn_board(&mut commands, &game, &mut view, origin_source, board_side, PADDING, GRID_COLOR, SQUARE_COLOR, 0);
     }
-    if state.current() == &AppState::Solving || results {
+    if state.0 == AppState::Solving || results {
         spawn_board(&mut commands, &game, &mut view, origin_target, board_side, PADDING, GRID_COLOR, SQUARE_COLOR, 1);
     }
 }
