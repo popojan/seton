@@ -1,7 +1,7 @@
 //#![windows_subsystem = "windows"]
 
 use bevy::prelude::*;
-use bevy::window::close_on_esc;
+use bevy::prelude::Srgba;
 use bevy::window::{PresentMode, PrimaryWindow, Window, WindowMode, WindowResized};
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiSettings};
 use bevy_prototype_lyon::draw::Fill;
@@ -106,11 +106,10 @@ fn main() {
         .add_plugins(ShapePlugin)
         .add_plugins(EguiPlugin)
         .init_state::<AppState>()
-        .insert_resource(ClearColor(Color::DARK_GRAY))
+        .insert_resource(ClearColor(Srgba::gray(0.25).into()))
         .insert_resource(SetonGame::default())
         .insert_resource(Board::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, close_on_esc)
         .add_systems(Update, resized_redraw_system)
         .add_systems(OnEnter(AppState::Memorizing), redraw_system)
         .add_systems(OnEnter(AppState::Solving), redraw_system)
@@ -445,8 +444,8 @@ fn spawn_source(
         (Vec2::new(-shift, 0.0), Vec2::new(shift, 0.0))
     };
 
-    const GRID_COLOR: Color = Color::rgb(192.0 / 255., 192. / 255., 192. / 255.);
-    const SQUARE_COLOR: Color = Color::GRAY;
+    const GRID_COLOR: Color = Color::srgb(192.0 / 255., 192. / 255., 192. / 255.);
+    const SQUARE_COLOR: Color = Color::srgb(0.5, 0.5, 0.5);
 
     view.vertical = vertical;
     let results = state.get() == &AppState::Results && game.games_played > 0;
