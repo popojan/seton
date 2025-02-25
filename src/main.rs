@@ -1,14 +1,13 @@
 //#![windows_subsystem = "windows"]
 
-use bevy::prelude::*;
 use bevy::prelude::Srgba;
+use bevy::prelude::*;
 use bevy::window::{PresentMode, PrimaryWindow, Window, WindowMode, WindowResized};
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiSettings};
+use bevy_egui::{egui, EguiContextSettings, EguiContexts, EguiPlugin};
 use bevy_prototype_lyon::draw::Fill;
 use bevy_prototype_lyon::prelude::*;
 use bevy_prototype_lyon::shapes;
-use rand::seq::SliceRandom;
-
+use rand::prelude::*;
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 enum AppState {
     Memorizing,
@@ -58,7 +57,7 @@ fn sample_stone_coords(
     //let mut ret: Vec<(u32, u32)> = vec![];
     for (k, (i, j)) in squares
         .choose_multiple(
-            &mut rand::thread_rng(),
+            &mut rand::rng(),
             usize::min(n_black_stones + n_white_stones as usize, squares.len()),
         )
         .enumerate()
@@ -92,8 +91,7 @@ impl Default for SetonGame {
 
 fn main() {
     App::new()
-        .insert_resource(Msaa::Sample4)
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
+.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Setonova hra".to_string(),
                 present_mode: PresentMode::AutoVsync,
@@ -122,14 +120,16 @@ fn main() {
 fn egui_settings(
     mut egui_context: EguiContexts,
     state: Res<State<AppState>>,
-    mut egui_settings: ResMut<EguiSettings>,
+    mut contexts: Query<&mut EguiContextSettings>,
     mut next_state: ResMut<NextState<AppState>>,
     mut game: ResMut<SetonGame>,
     time: Res<Time>,
     mut window_query: Query<&mut Window, With<PrimaryWindow>>,
 ) {
-    if let Ok(window) = window_query.get_single() {
-        egui_settings.scale_factor = 1.75 / window.scale_factor();
+    if let Ok(mut egui_settings) = contexts.get_single_mut() {
+        if let Ok(window) = window_query.get_single_mut() {
+            egui_settings.scale_factor = 1.75 / window.scale_factor();
+        }
     }
     let mut progress_left = 1.0;
     egui::TopBottomPanel::top("top_bar").show(egui_context.ctx_mut(), |ui| {
@@ -137,7 +137,7 @@ fn egui_settings(
             if ui.button(": :").clicked() {
                 if let Ok(mut window) = window_query.get_single_mut() {
                     if window.mode == WindowMode::Windowed {
-                        window.mode = WindowMode::BorderlessFullscreen;
+                        window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Primary);
                     } else {
                         window.mode = WindowMode::Windowed;
                     }
@@ -154,13 +154,13 @@ fn egui_settings(
                         game.board_size,
                     );
                     game.position[1] = ndarray::Array2::zeros([game.board_size, game.board_size]);
-                    game.time_started = time.elapsed_seconds_f64();
+                    game.time_started = time.elapsed_secs_f64();
                     next_state.set(AppState::Memorizing);
                 }
             } else if state.get() == &AppState::Memorizing {
                 ui.label("Zapamatuj si...");
                 progress_left = 1.0
-                    - (time.elapsed_seconds_f64() - game.time_started) / game.time_seconds as f64;
+                    - (time.elapsed_secs_f64() - game.time_started) / game.time_seconds as f64;
                 ui.separator();
                 if ui.button("Už vím").clicked() {
                     progress_left = 0.0;
@@ -172,7 +172,7 @@ fn egui_settings(
                 ui.label("Rozestav kameny...");
                 ui.separator();
                 progress_left = 1.0
-                    - (time.elapsed_seconds_f64() - game.time_started) / game.time_seconds as f64;
+                    - (time.elapsed_secs_f64() - game.time_started) / game.time_seconds as f64;
                 if ui.button("Hotovo").clicked() {
                     let (correct_2, correct_1) = {
                         let truth = &game.position[0];
@@ -337,6 +337,7 @@ fn spawn_board(
     let board = shapes::Rectangle {
         extents: Vec2::new(board_side, board_side),
         origin: RectangleOrigin::Center,
+        ..Default::default()
     };
 
     let n_half: f32 = 0.5 * (game.board_size - 1) as f32;
@@ -345,6 +346,7 @@ fn spawn_board(
     let square = shapes::Rectangle {
         extents: Vec2::new(square_side / (1.0 + padding), square_side / (1.0 + padding)),
         origin: RectangleOrigin::Center,
+        ..Default::default()
     };
 
     let stone_radius = 0.5 * square_side / (1.0 + 4.0 * padding);
@@ -357,11 +359,8 @@ fn spawn_board(
         .spawn((
             ShapeBundle {
                 path: GeometryBuilder::build_as(&board),
-                spatial: SpatialBundle {
-                    transform: Transform::default()
+                transform: Transform::default()
                         .with_translation(Vec3::new(origin.x, origin.y, 0.0)),
-                    ..default()
-                },
                 ..default()
             },
             Fill::color(grid_color),
@@ -374,14 +373,11 @@ fn spawn_board(
                 .spawn((
                     ShapeBundle {
                         path: GeometryBuilder::build_as(&square),
-                        spatial: SpatialBundle {
-                            transform: Transform::default().with_translation(Vec3::new(
+                        transform: Transform::default().with_translation(Vec3::new(
                                 origin.x + (i as f32 - n_half) * square_side,
                                 origin.y + (j as f32 - n_half) * square_side,
                                 0.5,
                             )),
-                            ..default()
-                        },
                         ..default()
                     },
                     Fill::color(square_color),
@@ -393,11 +389,8 @@ fn spawn_board(
                             .spawn((
                                 ShapeBundle {
                                     path: GeometryBuilder::build_as(&stone),
-                                    spatial: SpatialBundle {
-                                        transform: Transform::default()
+                                    transform: Transform::default()
                                             .with_translation(Vec3::new(0.0, 0.0, 0.5)),
-                                        ..default()
-                                    },
                                     ..default()
                                 },
                                 Fill::color(if is_stone > 0 {
@@ -418,8 +411,9 @@ fn spawn_board(
     view.stone_radius = stone_radius;
 }
 
-fn setup(mut commands: Commands) {
-    commands.spawn(Camera2dBundle::default());
+fn setup(mut commands: Commands)
+{
+    commands.spawn(Camera2d::default());
 }
 
 fn spawn_source(
